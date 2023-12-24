@@ -3,6 +3,8 @@ from simulation import (
     User,
     LoginFail,
     Login,
+    Pause,
+    PauseBetween,
     UserGroup,
     SingleMachineAttack,
     Simulation,
@@ -18,24 +20,30 @@ def test_util_fns():
 
 
 def test_user():
-    # times are randomly chosen in the interval [start, start+duration]
-    user = User(duration=5) + LoginFail() + Login()
-    for _ in range(20):
-        las = user(dt)
-        assert [la.status for la in las] == [401, 200]
-        assert dt <= las[0].time <= las[1].time <= dt + timedelta(seconds=5)
-        assert las[0].user == las[1].user
-
-    # if duration=0, all actions happen at the same time, the start time
-    user = User(duration=0) + LoginFail() + Login()
+    user = User() + LoginFail() + Login()
     las = user(dt)
     assert [la.status for la in las] == [401, 200]
     assert dt == las[0].time == las[1].time
     assert las[0].user == las[1].user
 
+    user = User() + LoginFail() + Pause(duration=5) + Login()
+    las = user(dt)
+    assert [la.status for la in las] == [401, 200]
+    assert dt == las[0].time and las[0].time + timedelta(seconds=5) == las[1].time
+    assert las[0].user == las[1].user
+
+    user = User() + LoginFail() + PauseBetween(0, 5) + Login()
+    for _ in range(20):
+        las = user(dt)
+        assert [la.status for la in las] == [401, 200]
+        assert dt == las[0].time and las[0].time <= las[1].time <= las[
+            0
+        ].time + timedelta(seconds=5)
+        assert las[0].user == las[1].user
+
 
 def test_user_group():
-    ug = UserGroup(User(duration=2) + LoginFail() + Login(), 5)
+    ug = UserGroup(User() + LoginFail() + PauseBetween(0, 2) + Login(), 5)
     las = sorted(ug(dt, duration_seconds=20), key=lambda la: la.time.timestamp())
     # Note the 22 in the next assertion, the duration_seconds=20 of
     # the usergroup is about start times, than add the duration of the
@@ -59,22 +67,22 @@ def test_single_machine_attack():
 
 def test_simulation():
     s = Simulation(start=dt, duration=20)
-    su = s + (User(duration=0) + Login())
+    su = s + (User() + Login())
     las = su()
     assert [la.status for la in las] == [200]
     assert all(dt <= la.time <= dt + timedelta(20) for la in las)
 
-    su = s + UserGroup(User(duration=0) + Login(), 10)
+    su = s + UserGroup(User() + Login(), 10)
     las = su()
     assert [la.status for la in las] == [200] * 10
     assert all(dt <= la.time <= dt + timedelta(20) for la in las)
 
-    s += User(duration=0) + Login()  # Change of simulation s
+    s += User() + Login()  # Change of simulation s
     las = s()
     assert [la.status for la in las] == [200]
     assert all(dt <= la.time <= dt + timedelta(20) for la in las)
 
-    su = s + UserGroup(User(duration=0) + Login(), 10)
+    su = s + UserGroup(User() + Login(), 10)
     las = su()
     assert [la.status for la in las] == [200] * 11
     assert all(dt <= la.time <= dt + timedelta(20) for la in las)

@@ -46,39 +46,58 @@ class LoginAttempt:
 
 
 class UserAction:
-    ...
+    def __call__(self, *args, **kwargs):
+        ...
 
 
 class Login(UserAction):
     def __call__(self, time: datetime, user: int, **kwargs):
-        return [LoginAttempt(user=user, status=200, time=time)]
+        return [LoginAttempt(user=user, status=200, time=time)], time
 
 
 class LoginFail(UserAction):
     def __call__(self, time: datetime, user: int, **kwargs):
-        return [LoginAttempt(user=user, status=401, time=time)]
+        return [LoginAttempt(user=user, status=401, time=time)], time
+
+
+class Pause(UserAction):
+    def __init__(self, duration: timedelta | int):
+        self.duration = ensuretimedelta(duration)
+
+    def __call__(self, time: datetime, **kwargs):
+        return None, time + self.duration
+
+
+class PauseBetween(UserAction):
+    def __init__(self, lower: timedelta | int, upper: timedelta | int):
+        self.lower = ensuretimedelta(lower)
+        self.upper = ensuretimedelta(upper)
+
+    def __call__(self, time: datetime, **kwargs):
+        return None, time + timedelta(
+            seconds=sim_random.randint(
+                round(self.lower.total_seconds()), round(self.upper.total_seconds())
+            )
+        )
 
 
 class User:
     def __init__(
         self,
-        duration: DurationType,
         behaviors: list[UserAction] | None = None,
         **kwargs,
     ):
-        self._duration_seconds = ensuretimedelta(duration).total_seconds()
         self._behaviors = behaviors or []
         self._passed_kwargs = kwargs
         self._kwargs = {"user": get_user_id(), "ignored": None} | kwargs
 
     def __call__(self, start: datetime, **kwargs):
-        trigger_times = sorted(
-            generate_times(start, self._duration_seconds, len(self._behaviors))
-        )
-        return flatten(
-            behavior(trigger, **(self._kwargs | kwargs))
-            for behavior, trigger in zip(self._behaviors, trigger_times)
-        )
+        rv = []
+        for behavior in self._behaviors:
+            act, start = behavior(start, **(self._kwargs | kwargs))
+            if act:
+                rv.extend(act)
+        return rv
 
     def __add__(self, other):
         if isinstance(other, UserAction):
@@ -93,7 +112,6 @@ class UserGroup:
         self._passed_kwargs = kwargs
         self._users = [
             User(
-                user._duration_seconds,
                 user._behaviors,
                 **(user._passed_kwargs | kwargs),
             )
@@ -101,7 +119,7 @@ class UserGroup:
         ]
 
     def __add__(self, other):
-        rv = UserGroup(User(duration=0), 0, **self._passed_kwargs)
+        rv = UserGroup(User(), 0, **self._passed_kwargs)
         rv._users.extend(self._users)
         rv._users.extend(other._users)
         return rv
@@ -117,8 +135,8 @@ class SingleMachineAttack:
     def __init__(self, fail_count: int, success_count: int):
         machine_id = get_user_id()
         self._behavior = UserGroup(
-            User(duration=0, user=machine_id) + LoginFail(), fail_count
-        ) + UserGroup(User(duration=0, user=machine_id) + Login(), success_count)
+            User(user=machine_id) + LoginFail(), fail_count
+        ) + UserGroup(User(user=machine_id) + Login(), success_count)
 
     def __call__(self, start: datetime, duration_seconds: int, **kwargs):
         return self._behavior(start, duration_seconds, **kwargs)
