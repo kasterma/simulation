@@ -1,4 +1,5 @@
-from typing import TypeAlias
+from typing import TypeAlias, TypeVar
+from collections.abc import Iterable, Callable
 from datetime import datetime, timedelta
 from random import Random
 from dataclasses import dataclass
@@ -17,7 +18,10 @@ def get_user_id() -> int:
     return rv
 
 
-def flatten(ls: list[list]) -> list:
+T = TypeVar("T")
+
+
+def flatten(ls: Iterable[Iterable[T]]) -> list[T]:
     return [x for l in ls for x in l]  # noqa: E741
 
 
@@ -146,7 +150,7 @@ class Simulation:
     def __init__(self, start: datetime, duration: DurationType, **kwargs):
         self._start = start
         self._duration_seconds = ensuretimedelta(duration).total_seconds()
-        self._sims = []
+        self._sims: list[Callable] = []
         self._passed_kwargs = kwargs
         self._kwargs = {"duration_seconds": self._duration_seconds} | kwargs
 
