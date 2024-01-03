@@ -29,6 +29,8 @@ def next(location):
     #if proposed == N + 1:
     #    proposed = 1
 
+    # proposed = random.choice(range(1, N+1))    # choose random next island from all, this one works as well
+
     if random.random() < prior(proposed) / prior(location):
         return proposed
     else:
